@@ -5,18 +5,18 @@ __pycache__/
 .venv/
 venv/
 
-# Data (raw and processed — too large for git)
+# Data (raw files — too large for git)
 data/raw/
 data/processed/
-data/oil_pulse.duckdb
 data/oil_pulse.duckdb.wal
 
-# Keep the flag file and directory structure
+# Keep the DuckDB snapshot and flag for Streamlit Cloud
+!data/oil_pulse.duckdb
 !data/ingest_ready.flag
 
-# Models (binary files)
-models/*.pkl
-models/metrics.json
+# Models (keep for Streamlit Cloud demo)
+# models/*.pkl
+# models/metrics.json
 
 # Astro / Docker
 .astro/
