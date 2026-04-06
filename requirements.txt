@@ -1,0 +1,32 @@
+# =============================================================================
+# Oil Pulse Pipeline — Python Dependencies
+# =============================================================================
+# Install: pip install -r requirements.txt
+# Note: apache-airflow is provided by Astronomer runtime in Docker.
+#       Listed here only for local dev outside Docker.
+# =============================================================================
+
+# --- Spark ---
+pyspark>=3.5.0,<4.0.0
+
+# --- Ingestion ---
+yfinance>=0.2.28
+feedparser>=6.0.10
+vaderSentiment>=3.3.2
+requests>=2.28.0
+
+# --- ML ---
+scikit-learn>=1.3.0
+joblib>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# --- Storage ---
+duckdb>=0.9.0
+
+# --- Dashboard (not needed inside Airflow, but listed for completeness) ---
+streamlit>=1.28.0
+plotly>=5.18.0
+
+# --- Testing ---
+pytest>=7.4.0

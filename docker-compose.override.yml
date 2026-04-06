@@ -1,0 +1,12 @@
+# docker-compose.override.yml
+# Mounts local data/ and models/ into Airflow containers so pipeline
+# output persists on the host machine between container restarts.
+
+services:
+  scheduler:
+    volumes:
+      - ./data:/usr/local/airflow/data
+      - ./models:/usr/local/airflow/models
+      - ./scripts:/usr/local/airflow/scripts
+    environment:
+      - PYTHONPATH=/usr/local/airflow

@@ -1,0 +1,46 @@
+# Environment
+.env
+*.pyc
+__pycache__/
+.venv/
+venv/
+
+# Data (raw and processed — too large for git)
+data/raw/
+data/processed/
+data/oil_pulse.duckdb
+data/oil_pulse.duckdb.wal
+
+# Keep the flag file and directory structure
+!data/ingest_ready.flag
+
+# Models (binary files)
+models/*.pkl
+models/metrics.json
+
+# Astro / Docker
+.astro/
+logs/
+airflow.db
+airflow.cfg
+
+# Spark
+.spark-warehouse/
+metastore_db/
+derby.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# OS
+.DS_Store
+Thumbs.db
