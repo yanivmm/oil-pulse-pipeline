@@ -7,6 +7,7 @@ Reads from:
     data/raw/news/*.csv
     data/raw/trump/*.csv
     data/raw/war_news/*.csv
+    data/raw/taiwan/*.csv
 
 Writes to:
     data/processed/clean/prices.parquet
@@ -14,6 +15,7 @@ Writes to:
     data/processed/clean/news.parquet
     data/processed/clean/trump.parquet
     data/processed/clean/war_news.parquet
+    data/processed/clean/taiwan.parquet
 
 Prints the total record count to stdout (captured by Airflow XCom).
 
@@ -109,6 +111,20 @@ WAR_NEWS_SCHEMA = StructType(
         StructField("summary", StringType(), True),
         StructField("sentiment_compound", FloatType(), True),
         StructField("stance", StringType(), True),
+    ]
+)
+
+
+TAIWAN_SCHEMA = StructType(
+    [
+        StructField("date", StringType(), True),
+        StructField("source", StringType(), True),
+        StructField("title", StringType(), True),
+        StructField("published_date", StringType(), True),
+        StructField("summary", StringType(), True),
+        StructField("sentiment_compound", FloatType(), True),
+        StructField("escalation", StringType(), True),
+        StructField("iran_spillover", StringType(), True),
     ]
 )
 
@@ -210,6 +226,23 @@ def clean_war_news(spark: SparkSession) -> int:
     return df.count()
 
 
+def clean_taiwan(spark: SparkSession) -> int:
+    """Clean Taiwan/China tension data. Returns row count."""
+    path = str(RAW / "taiwan")
+    if not Path(path).exists() or not list(Path(path).glob("*.csv")):
+        return 0
+
+    df = spark.read.csv(path, header=True, schema=TAIWAN_SCHEMA)
+    df = (
+        df.withColumn("date", to_date(col("date")))
+        .withColumn("title", trim(col("title")))
+        .dropna(subset=["date", "sentiment_compound"])
+        .dropDuplicates(["date", "source", "title"])
+    )
+    df.write.mode("overwrite").parquet(str(CLEAN / "taiwan.parquet"))
+    return df.count()
+
+
 def main():
     """Run all cleaning steps and print total record count."""
     CLEAN.mkdir(parents=True, exist_ok=True)
@@ -221,11 +254,13 @@ def main():
         news_count = clean_news(spark)
         trump_count = clean_trump(spark)
         war_count = clean_war_news(spark)
+        taiwan_count = clean_taiwan(spark)
 
-        total = price_count + reddit_count + news_count + trump_count + war_count
+        total = price_count + reddit_count + news_count + trump_count + war_count + taiwan_count
         print(
             f"Cleaned: prices={price_count}, reddit={reddit_count}, "
-            f"news={news_count}, trump={trump_count}, war_news={war_count}"
+            f"news={news_count}, trump={trump_count}, war_news={war_count}, "
+            f"taiwan={taiwan_count}"
         )
         # Last line is an integer — Airflow BashOperator captures it via XCom
         print(total)

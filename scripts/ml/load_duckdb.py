@@ -133,6 +133,17 @@ def main():
         else:
             print("No war exit predictions found")
 
+        # --- taiwan_tensions table ----------------------------------------------
+        taiwan_parquet = CLEAN / "taiwan.parquet"
+        if taiwan_parquet.exists() and any(taiwan_parquet.glob("*.parquet")):
+            df_taiwan = pd.read_parquet(str(taiwan_parquet))
+            if not df_taiwan.empty:
+                con.execute("DROP TABLE IF EXISTS taiwan_tensions")
+                con.execute("CREATE TABLE taiwan_tensions AS SELECT * FROM df_taiwan")
+                print(f"Loaded {len(df_taiwan)} rows into taiwan_tensions")
+        else:
+            print("No taiwan parquet found, skipping")
+
     finally:
         con.close()
 

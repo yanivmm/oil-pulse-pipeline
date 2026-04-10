@@ -45,9 +45,9 @@ class TestDagIngest:
         assert dagbag.import_errors.get(os.path.join(DAGS_DIR, "dag_ingest.py")) is None
 
     def test_task_count(self, dagbag):
-        """dag_ingest should have exactly 7 tasks."""
+        """dag_ingest should have exactly 8 tasks."""
         dag = dagbag.dags["dag_ingest"]
-        assert len(dag.tasks) == 7
+        assert len(dag.tasks) == 8
 
     def test_dependencies(self, dagbag):
         """Verify fan-out/fan-in pattern: sensor → 5 fetchers → validate."""
@@ -55,18 +55,18 @@ class TestDagIngest:
         sensor = dag.get_task("start_sensor")
         validate = dag.get_task("validate_raw_data")
 
-        # Sensor has 5 downstream tasks
+        # Sensor has 6 downstream tasks
         downstream_ids = {t.task_id for t in sensor.downstream_list}
         assert downstream_ids == {
             "fetch_oil_prices", "fetch_reddit_sentiment", "fetch_rss_news",
-            "fetch_trump_statements", "fetch_war_news",
+            "fetch_trump_statements", "fetch_war_news", "fetch_taiwan_tensions",
         }
 
-        # Validate has 5 upstream tasks
+        # Validate has 6 upstream tasks
         upstream_ids = {t.task_id for t in validate.upstream_list}
         assert upstream_ids == {
             "fetch_oil_prices", "fetch_reddit_sentiment", "fetch_rss_news",
-            "fetch_trump_statements", "fetch_war_news",
+            "fetch_trump_statements", "fetch_war_news", "fetch_taiwan_tensions",
         }
 
 

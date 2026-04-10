@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow import DAG
-from airflow.providers.smtp.operators.smtp import EmailOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 
@@ -144,15 +144,9 @@ with DAG(
         python_callable=_run_script("load_duckdb.py"),
     )
 
-    # Mocked email — will log instead of sending if SMTP is not configured
-    notify_success = EmailOperator(
+    # Success marker — in production, replace with EmailOperator or Slack
+    notify_success = EmptyOperator(
         task_id="notify_success",
-        to="team@example.com",
-        subject="Oil Pulse — prediction complete {{ ds }}",
-        html_content=(
-            "<h3>Pipeline succeeded</h3>"
-            "<p>Prediction for {{ ds }} has been loaded into DuckDB.</p>"
-        ),
     )
 
     # --- Dependency chain ---------------------------------------------------

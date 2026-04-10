@@ -114,6 +114,20 @@ def _fetch_war_news(**context):
     return output_path
 
 
+def _fetch_taiwan_tensions(**context):
+    """Fetch Taiwan-China tension news from Google News + Al Jazeera."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "fetch_taiwan_tensions",
+        str(PROJECT_ROOT / "scripts" / "ingest" / "fetch_taiwan_tensions.py"),
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    output_path = mod.fetch(data_dir=str(DATA_RAW / "taiwan"))
+    context["ti"].xcom_push(key="output_path", value=output_path)
+    return output_path
+
+
 def _validate_raw_data(**context):
     """Pull output paths from all fetch tasks and validate files exist."""
     ti = context["ti"]
@@ -123,6 +137,7 @@ def _validate_raw_data(**context):
         "news": ti.xcom_pull(task_ids="fetch_rss_news", key="output_path"),
         "trump": ti.xcom_pull(task_ids="fetch_trump_statements", key="output_path"),
         "war_news": ti.xcom_pull(task_ids="fetch_war_news", key="output_path"),
+        "taiwan": ti.xcom_pull(task_ids="fetch_taiwan_tensions", key="output_path"),
     }
     for source, path in paths.items():
         if path and Path(path).exists():
@@ -138,8 +153,8 @@ def _validate_raw_data(**context):
 with DAG(
     dag_id="dag_ingest",
     default_args=default_args,
-    description="Hourly ingestion: oil prices, Reddit sentiment, RSS news",
-    schedule="@hourly",
+    description="Daily ingestion: oil prices, Reddit sentiment, RSS news",
+    schedule="@daily",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["ingest", "oil-pulse"],
@@ -175,6 +190,11 @@ with DAG(
         python_callable=_fetch_war_news,
     )
 
+    fetch_taiwan = PythonOperator(
+        task_id="fetch_taiwan_tensions",
+        python_callable=_fetch_taiwan_tensions,
+    )
+
     validate = PythonOperator(
         task_id="validate_raw_data",
         python_callable=_validate_raw_data,
@@ -182,5 +202,5 @@ with DAG(
     )
 
     # Dependency structure:
-    # start_sensor → [fetch_prices, fetch_reddit, fetch_news, fetch_trump, fetch_war] → validate
-    start_sensor >> [fetch_prices, fetch_reddit, fetch_news, fetch_trump, fetch_war] >> validate
+    # start_sensor → [fetch_prices, fetch_reddit, fetch_news, fetch_trump, fetch_war, fetch_taiwan] → validate
+    start_sensor >> [fetch_prices, fetch_reddit, fetch_news, fetch_trump, fetch_war, fetch_taiwan] >> validate

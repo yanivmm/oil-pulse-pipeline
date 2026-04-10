@@ -136,6 +136,7 @@ df_preds = _safe_query(con, "SELECT * FROM predictions ORDER BY date")
 df_trump = _safe_query(con, "SELECT * FROM trump_statements ORDER BY date DESC LIMIT 50")
 df_war = _safe_query(con, "SELECT * FROM war_news ORDER BY date DESC LIMIT 50")
 df_exit = _safe_query(con, "SELECT * FROM war_exit_index ORDER BY date DESC LIMIT 30")
+df_taiwan = _safe_query(con, "SELECT * FROM taiwan_tensions ORDER BY date")
 con.close()
 
 if df_summary.empty:
@@ -166,8 +167,8 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("**Data Sources**")
 st.sidebar.markdown("• Yahoo Finance (oil prices)")
 st.sidebar.markdown("• BBC, CNBC, MarketWatch (news)")
-st.sidebar.markdown("• Google News (Trump, war)")
-st.sidebar.markdown("• Al Jazeera (Middle East)")
+st.sidebar.markdown("• Google News (Trump, war, Taiwan)")
+st.sidebar.markdown("• Al Jazeera (Middle East, Asia)")
 st.sidebar.markdown("• Reddit (7 subreddits)")
 
 # ---------------------------------------------------------------------------
@@ -517,7 +518,111 @@ with we2:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# ROW 7 — Prediction History (compact)
+# ROW 7 — Taiwan–China War Probability Scale
+# ---------------------------------------------------------------------------
+C_TAIWAN = "#e599f7"  # light purple for Taiwan theme
+
+st.markdown("### 🇹🇼 Taiwan–China Conflict Probability Scale")
+st.caption(
+    "Heuristic index based on volume of Taiwan/China military news, sentiment escalation, "
+    "and Iran-tension spillover. Higher = more escalation signals detected. "
+    "This is an analytical tool, not a prediction."
+)
+
+if not df_taiwan.empty:
+    df_taiwan["date"] = pd.to_datetime(df_taiwan["date"]).dt.date
+
+    # Compute daily aggregates
+    tw_daily = df_taiwan.groupby("date").agg(
+        article_count=("title", "count"),
+        avg_sentiment=("sentiment_compound", "mean"),
+        escalation_pct=("escalation", lambda x: (x == "escalation").mean()),
+        iran_pct=("iran_spillover", "mean"),
+    ).reset_index().sort_values("date")
+
+    # Compute probability index per day
+    tw_daily["war_probability"] = (
+        0.20
+        + tw_daily["escalation_pct"] * 0.30
+        - tw_daily["avg_sentiment"] * 0.15
+        + tw_daily["iran_pct"] * 0.10
+        + (tw_daily["article_count"] / 200).clip(upper=0.15)
+    ).clip(0.05, 0.95)
+
+    latest_prob = tw_daily["war_probability"].iloc[-1] if len(tw_daily) > 0 else 0.5
+
+    tw1, tw2 = st.columns([1, 2])
+
+    with tw1:
+        fig_tw_gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=latest_prob * 100,
+            number={"suffix": "%"},
+            title={"text": "Taiwan Conflict Risk"},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": C_TAIWAN},
+                "steps": [
+                    {"range": [0, 25], "color": "#1f3d25"},
+                    {"range": [25, 50], "color": "#3d3520"},
+                    {"range": [50, 75], "color": "#3d2a1f"},
+                    {"range": [75, 100], "color": "#3d1f1f"},
+                ],
+            },
+        ))
+        fig_tw_gauge.update_layout(
+            height=250, margin=dict(t=40, b=10, l=30, r=30),
+            paper_bgcolor="rgba(0,0,0,0)", font=dict(color=C_TEXT),
+        )
+        st.plotly_chart(fig_tw_gauge, use_container_width=True, key="taiwan_gauge")
+
+        # Quick stats
+        n_esc = len(df_taiwan[df_taiwan["escalation"] == "escalation"])
+        n_total = len(df_taiwan)
+        st.markdown(f"**Articles:** {n_total} | **Escalation:** {n_esc} ({n_esc/n_total:.0%})")
+        iran_n = df_taiwan["iran_spillover"].sum() if "iran_spillover" in df_taiwan.columns else 0
+        st.markdown(f"**Iran Spillover Mentions:** {int(iran_n)}")
+
+    with tw2:
+        # Escalation breakdown stacked bar + probability line overlay
+        fig_tw = go.Figure()
+        if len(tw_daily) > 0:
+            fig_tw.add_trace(go.Bar(
+                x=tw_daily["date"], y=tw_daily["escalation_pct"] * 100,
+                name="Escalation %", marker_color="#ff6b6b", opacity=0.6,
+            ))
+            fig_tw.add_trace(go.Bar(
+                x=tw_daily["date"],
+                y=(1 - tw_daily["escalation_pct"]) * 100,
+                name="Neutral/De-esc %", marker_color="#51cf66", opacity=0.6,
+            ))
+            fig_tw.add_trace(go.Scatter(
+                x=tw_daily["date"], y=tw_daily["war_probability"] * 100,
+                mode="lines+markers", name="War Probability %",
+                line=dict(color=C_TAIWAN, width=3), marker=dict(size=6),
+                yaxis="y2",
+            ))
+            fig_tw.update_layout(
+                barmode="stack",
+                height=280, template=PLOTLY_TEMPLATE,
+                margin=dict(t=30, b=30, l=40, r=50),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                xaxis_title="", yaxis_title="Sentiment Split %",
+                yaxis2=dict(
+                    title="Probability %", overlaying="y", side="right",
+                    range=[0, 100], showgrid=False,
+                ),
+                title="Taiwan–China Escalation Trend & War Probability",
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_tw, use_container_width=True, key="taiwan_trend")
+else:
+    st.info("No Taiwan tension data yet. Run the ingest pipeline first.")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# ROW 8 — Prediction History (compact)
 # ---------------------------------------------------------------------------
 st.markdown("#### 📋 Prediction History")
 
@@ -547,5 +652,6 @@ else:
 st.caption(
     "Oil Pulse Pipeline — Portfolio Project | "
     "Data: Yahoo Finance, Reddit, BBC, CNBC, Google News, Al Jazeera | "
-    "ML: RandomForest + Sentiment Analysis"
+    "ML: RandomForest + Sentiment Analysis | "
+    "Taiwan-China: Google News + Al Jazeera conflict monitoring"
 )
