@@ -112,6 +112,13 @@ st.markdown(
         background: rgba(173,181,189,0.15); color: {C_NEUTRAL}; padding: 2px 8px;
         border-radius: 12px; font-size: 0.8em; font-weight: 600;
     }}
+    /* Hide deploy button and accessibility button */
+    .stDeployButton, [data-testid="stStatusWidget"],
+    button[kind="header"], #MainMenu,
+    .stAppDeployButton,
+    div[data-testid="stDecoration"] {{
+        display: none !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -531,6 +538,10 @@ st.caption(
 
 if not df_taiwan.empty:
     df_taiwan["date"] = pd.to_datetime(df_taiwan["date"]).dt.date
+    # Ensure iran_spillover is numeric (stored as string from Spark/parquet)
+    df_taiwan["iran_spillover"] = df_taiwan["iran_spillover"].map(
+        {"True": 1, "False": 0, True: 1, False: 0}
+    ).fillna(0).astype(int)
 
     # Compute daily aggregates
     tw_daily = df_taiwan.groupby("date").agg(
@@ -580,8 +591,8 @@ if not df_taiwan.empty:
         n_esc = len(df_taiwan[df_taiwan["escalation"] == "escalation"])
         n_total = len(df_taiwan)
         st.markdown(f"**Articles:** {n_total} | **Escalation:** {n_esc} ({n_esc/n_total:.0%})")
-        iran_n = df_taiwan["iran_spillover"].sum() if "iran_spillover" in df_taiwan.columns else 0
-        st.markdown(f"**Iran Spillover Mentions:** {int(iran_n)}")
+        iran_n = int(df_taiwan["iran_spillover"].sum())
+        st.markdown(f"**Iran Spillover Mentions:** {iran_n}")
 
     with tw2:
         # Escalation breakdown stacked bar + probability line overlay
