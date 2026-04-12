@@ -1,12 +1,13 @@
 """
-DAG 2: dag_transform — Daily Spark transformations.
+DAG 2: dag_transform — Spark transformations (triggered by dag_ingest).
 
 Demonstrates:
-    - ExternalTaskSensor: waits for dag_ingest to complete before starting
-    - BashOperator:       calls each PySpark script in sequence
-    - BranchPythonOperator: routes to features or notify_low_data based on volume
-    - XCom:               passes record counts between tasks
-    - TaskGroup:          groups Spark tasks visually as 'spark_processing'
+    - TriggerDagRunOperator: triggered from dag_ingest after successful ingestion
+    - BashOperator:          calls each PySpark script in sequence
+    - BranchPythonOperator:  routes to features or notify_low_data based on volume
+    - XCom:                  passes record counts between tasks
+    - TaskGroup:             groups Spark tasks visually as 'spark_processing'
+    - TriggerDagRunOperator: chains to dag_predict_publish on success
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import BranchPythonOperator, PythonOperator
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sdk import TaskGroup
 
 # ---------------------------------------------------------------------------
@@ -94,23 +95,14 @@ def _notify_low_data(**context):
 with DAG(
     dag_id="dag_transform",
     default_args=default_args,
-    description="Daily Spark transforms: clean → features → aggregate",
-    schedule="@daily",
+    description="Spark transforms: clean → features → aggregate (triggered by dag_ingest)",
+    schedule=None,  # triggered by dag_ingest via TriggerDagRunOperator
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["transform", "spark", "oil-pulse"],
 ) as dag:
 
-    # Wait for the ingest DAG's most recent successful run
-    wait_for_ingest = ExternalTaskSensor(
-        task_id="wait_for_ingest",
-        external_dag_id="dag_ingest",
-        external_task_id=None,  # wait for entire DAG
-        allowed_states=["success"],
-        poke_interval=60,
-        timeout=3600,
-        mode="reschedule",
-    )
+    # No sensor needed — this DAG is triggered by dag_ingest
 
     # --- Spark processing task group ----------------------------------------
     with TaskGroup("spark_processing") as spark_group:
@@ -156,8 +148,15 @@ with DAG(
         trigger_rule="none_failed_min_one_success",
     )
 
+    trigger_predict = TriggerDagRunOperator(
+        task_id="trigger_predict",
+        trigger_dag_id="dag_predict_publish",
+        wait_for_completion=False,
+    )
+
     # --- Dependencies -------------------------------------------------------
-    # wait → clean → parse → branch → [features → aggregate] OR [notify]
-    wait_for_ingest >> spark_clean >> parse_output >> check_volume
+    # clean → parse → branch → [features → aggregate] OR [notify] → end → trigger_predict
+    spark_clean >> parse_output >> check_volume
     check_volume >> spark_features >> spark_aggregate >> end
     check_volume >> notify_low >> end
+    end >> trigger_predict

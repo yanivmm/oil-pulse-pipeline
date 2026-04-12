@@ -45,9 +45,9 @@ class TestDagIngest:
         assert dagbag.import_errors.get(os.path.join(DAGS_DIR, "dag_ingest.py")) is None
 
     def test_task_count(self, dagbag):
-        """dag_ingest should have exactly 8 tasks."""
+        """dag_ingest should have exactly 9 tasks (6 fetchers + sensor + validate + trigger)."""
         dag = dagbag.dags["dag_ingest"]
-        assert len(dag.tasks) == 8
+        assert len(dag.tasks) == 9
 
     def test_dependencies(self, dagbag):
         """Verify fan-out/fan-in pattern: sensor → 5 fetchers → validate."""
@@ -80,16 +80,14 @@ class TestDagTransform:
     def test_task_count(self, dagbag):
         """dag_transform should have the expected number of tasks."""
         dag = dagbag.dags["dag_transform"]
-        # wait_for_ingest, spark_clean, parse_clean_output, check_data_volume,
-        # spark_features, spark_aggregate, notify_low_data, end
+        # spark_clean, parse_clean_output, check_data_volume,
+        # spark_features, spark_aggregate, notify_low_data, end, trigger_predict
         assert len(dag.tasks) == 8
 
-    def test_has_external_sensor(self, dagbag):
-        """dag_transform must have an ExternalTaskSensor."""
+    def test_triggered_schedule(self, dagbag):
+        """dag_transform has no schedule (triggered by dag_ingest)."""
         dag = dagbag.dags["dag_transform"]
-        task = dag.get_task("wait_for_ingest")
-        assert task is not None
-        assert task.task_type == "ExternalTaskSensor"
+        assert dag.schedule is None
 
 
 class TestDagPredictPublish:
@@ -100,15 +98,14 @@ class TestDagPredictPublish:
         assert "dag_predict_publish" in dagbag.dags
 
     def test_task_count(self, dagbag):
-        """dag_predict_publish should have exactly 7 tasks."""
+        """dag_predict_publish should have exactly 6 tasks."""
         dag = dagbag.dags["dag_predict_publish"]
-        assert len(dag.tasks) == 7
+        assert len(dag.tasks) == 6
 
     def test_linear_chain(self, dagbag):
         """Tasks should form a linear chain."""
         dag = dagbag.dags["dag_predict_publish"]
         expected_chain = [
-            "wait_for_transform",
             "check_file_exists",
             "train_model",
             "predict",

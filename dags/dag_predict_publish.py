@@ -1,12 +1,10 @@
 """
-DAG 3: dag_predict_publish — Daily ML prediction and DuckDB load.
+DAG 3: dag_predict_publish — ML prediction and DuckDB load (triggered by dag_transform).
 
 Demonstrates:
-    - ExternalTaskSensor:  waits for dag_transform to complete
+    - TriggerDagRunOperator: triggered from dag_transform after successful transforms
     - ShortCircuitOperator: skips the entire pipeline if processed data missing
     - PythonOperator:       runs train → predict → load_duckdb in sequence
-    - EmailOperator:        mocked success notification (no real SMTP)
-    - SLA:                  predict task must finish within 30 minutes
     - on_failure_callback:  logs a custom error message if any task fails
 """
 
@@ -20,7 +18,6 @@ from pathlib import Path
 from airflow import DAG
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -100,23 +97,15 @@ default_args = {
 with DAG(
     dag_id="dag_predict_publish",
     default_args=default_args,
-    description="Daily: train model → predict → load DuckDB → notify",
-    schedule="@daily",
+    description="Train model → predict → load DuckDB (triggered by dag_transform)",
+    schedule=None,  # triggered by dag_transform via TriggerDagRunOperator
     start_date=datetime(2024, 1, 1),
     catchup=False,
     sla_miss_callback=_sla_miss_callback,
     tags=["ml", "predict", "oil-pulse"],
 ) as dag:
 
-    wait_for_transform = ExternalTaskSensor(
-        task_id="wait_for_transform",
-        external_dag_id="dag_transform",
-        external_task_id=None,
-        allowed_states=["success"],
-        poke_interval=60,
-        timeout=3600,
-        mode="reschedule",
-    )
+    # No sensor needed — this DAG is triggered by dag_transform
 
     check_file = ShortCircuitOperator(
         task_id="check_file_exists",
@@ -150,4 +139,4 @@ with DAG(
     )
 
     # --- Dependency chain ---------------------------------------------------
-    wait_for_transform >> check_file >> train_model >> predict >> war_exit >> load_duckdb >> notify_success
+    check_file >> train_model >> predict >> war_exit >> load_duckdb >> notify_success
