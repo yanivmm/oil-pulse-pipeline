@@ -43,6 +43,7 @@ from pyspark.sql.functions import (
     lag,
     lead,
     lit,
+    lower,
     round as spark_round,
     sum as spark_sum,
     when,
@@ -145,9 +146,18 @@ def build_features(spark: SparkSession) -> int:
         base_daily = None
 
     # --- News sentiment aggregation per day ----------------------------------
+    # WSJ, Reuters, Bloomberg get 1.25x credibility weight; others get 1.0
     if has_news:
-        news_daily = news.groupBy("date").agg(
-            avg("sentiment_compound").alias("news_sentiment")
+        news_w = news.withColumn(
+            "cred_weight",
+            when(
+                lower(col("source")).rlike("wall street|wsj|reuters|bloomberg"),
+                lit(1.25),
+            ).otherwise(lit(1.0)),
+        )
+        news_daily = news_w.groupBy("date").agg(
+            (spark_sum(col("sentiment_compound") * col("cred_weight")) /
+             spark_sum(col("cred_weight"))).alias("news_sentiment")
         )
 
     # --- Trump sentiment aggregation per day ---------------------------------
@@ -161,9 +171,18 @@ def build_features(spark: SparkSession) -> int:
         )
 
     # --- War news: sentiment + favor/against counts per day ------------------
+    # Same credibility weighting for war news sources
     if has_war:
-        war_daily = war_news.groupBy("date").agg(
-            avg("sentiment_compound").alias("war_sentiment_avg"),
+        war_w = war_news.withColumn(
+            "cred_weight",
+            when(
+                lower(col("source")).rlike("wall street|wsj|reuters|bloomberg"),
+                lit(1.25),
+            ).otherwise(lit(1.0)),
+        )
+        war_daily = war_w.groupBy("date").agg(
+            (spark_sum(col("sentiment_compound") * col("cred_weight")) /
+             spark_sum(col("cred_weight"))).alias("war_sentiment_avg"),
             spark_count("*").alias("war_article_count"),
             spark_sum(when(col("stance") == "favor", 1).otherwise(0)).alias("favor_count"),
             spark_sum(when(col("stance") == "against", 1).otherwise(0)).alias("against_count"),

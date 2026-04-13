@@ -455,85 +455,163 @@ with g2:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# ROW 6 — War Exit Pressure Forecaster
+# ROW 6 — Round 3: Iran Strike Probability
 # ---------------------------------------------------------------------------
-st.markdown("### 🔮 War Exit Pressure Forecaster")
-st.caption(
-    "Based on sentiment analysis of r/conservative + r/politics and news coverage "
-    "of Trump's base opinion on the Middle East conflict. "
-    "This is an analytical tool measuring public opinion pressure, not a political forecast."
-)
 
-we1, we2 = st.columns([1, 2])
+# --- Ceasefire auto-detection ---
+# If war sentiment turns positive & favor_ratio dominated for 5+ days → ceasefire likely
+_ceasefire_detected = False
+if not df_filtered.empty and "avg_war_sentiment" in df_filtered.columns:
+    _recent_war = df_filtered.tail(5)
+    _recent_sent = _recent_war["avg_war_sentiment"].mean() if len(_recent_war) > 0 else -0.1
+    _recent_favor = _recent_war["favor_ratio"].mean() if "favor_ratio" in _recent_war.columns else 0.0
+    if _recent_sent > 0.15 and _recent_favor > 0.70:
+        _ceasefire_detected = True
 
-with we1:
-    if not df_exit.empty:
-        exit_row = df_exit.iloc[0]
-        ep = exit_row.get("exit_probability", 0.5)
-        fig_we = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=ep * 100,
-            number={"suffix": "%"},
-            title={"text": "Exit Probability"},
-            gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": C_TRUMP},
-                "steps": [
-                    {"range": [0, 30], "color": "#1f3d25"},
-                    {"range": [30, 60], "color": "#3d3520"},
-                    {"range": [60, 100], "color": "#3d1f1f"},
-                ],
-            },
-        ))
-        fig_we.update_layout(
-            height=250, margin=dict(t=40, b=10, l=30, r=30),
-            paper_bgcolor="rgba(0,0,0,0)", font=dict(color=C_TEXT),
-        )
-        st.plotly_chart(fig_we, use_container_width=True, key="war_exit_gauge")
+if _ceasefire_detected:
+    st.markdown("### 🕊️ Ceasefire Detected — Round 3 Monitoring Paused")
+    st.success(
+        "War sentiment has turned **positive** and favorable coverage exceeds **70%** "
+        "over the last 5 days. Round 3 (Iran) strike probability section is paused. "
+        "If tensions resume, this section will reactivate automatically."
+    )
+else:
+    C_IRAN = "#ff8787"  # red-ish for Iran threat
+    st.markdown("### 🚀 Round 3 Probability — Iran Strike")
+    st.caption(
+        "Israel struck Iran twice previously — probability of a 3rd round, based on "
+        "base opinion sentiment (r/conservative + r/politics), war news stance, "
+        "and pressure index trajectory. Section auto-hides upon ceasefire detection."
+    )
 
-        trend = exit_row.get("base_sentiment_trend", "stable")
-        trend_emoji = {"declining": "📉", "improving": "📈", "stable": "➡️"}.get(trend, "➡️")
-        st.markdown(f"**Trend:** {trend_emoji} {trend.title()}")
-        st.markdown(f"**Pressure Index:** {exit_row.get('pressure_index', 0):.1%}")
-    else:
-        st.info("Run the war exit model to see forecasts.")
+    we1, we2 = st.columns([1, 2])
 
-with we2:
-    if not df_filtered.empty and "base_war_sentiment" in df_filtered.columns:
-        fig_base = go.Figure()
-        fig_base.add_trace(go.Scatter(
-            x=df_filtered["date"], y=df_filtered["base_war_sentiment"],
-            mode="lines+markers", name="Base War Sentiment",
-            line=dict(color=C_WAR, width=2), marker=dict(size=3),
-        ))
-        if "base_sentiment_rolling_7d" in df_filtered.columns:
-            fig_base.add_trace(go.Scatter(
-                x=df_filtered["date"], y=df_filtered["base_sentiment_rolling_7d"],
-                mode="lines", name="7-Day Rolling Avg",
-                line=dict(color=C_TRUMP, width=2, dash="dash"),
+    with we1:
+        if not df_exit.empty:
+            exit_row = df_exit.iloc[0]
+            ep = exit_row.get("exit_probability", 0.5)
+            # Invert: original was "exit probability" — now it's "strike probability"
+            # High exit pressure = low strike chance, so: strike_prob = 1 - exit_prob
+            strike_prob = 1.0 - ep
+            fig_we = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=strike_prob * 100,
+                number={"suffix": "%"},
+                title={"text": "Round 3 Strike Index"},
+                gauge={
+                    "axis": {"range": [0, 100]},
+                    "bar": {"color": C_IRAN},
+                    "steps": [
+                        {"range": [0, 25], "color": "#1f3d25"},
+                        {"range": [25, 50], "color": "#3d3520"},
+                        {"range": [50, 75], "color": "#3d2a1f"},
+                        {"range": [75, 100], "color": "#3d1f1f"},
+                    ],
+                },
             ))
-        fig_base.add_hline(y=0, line_dash="dot", line_color=C_NEUTRAL, opacity=0.5)
-        fig_base.update_layout(
-            height=250, template=PLOTLY_TEMPLATE, margin=dict(t=10, b=30, l=40, r=10),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            xaxis_title="", yaxis_title="Sentiment",
-            title="Base (Conservative/Politics) War Sentiment",
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_base, use_container_width=True, key="base_sent")
+            fig_we.update_layout(
+                height=250, margin=dict(t=40, b=10, l=30, r=30),
+                paper_bgcolor="rgba(0,0,0,0)", font=dict(color=C_TEXT),
+            )
+            st.plotly_chart(fig_we, use_container_width=True, key="war_exit_gauge")
+
+            # --- Time estimation for Round 3 ---
+            pressure = exit_row.get("pressure_index", 0.5)
+            if strike_prob >= 0.65:
+                _iran_months = 3
+            elif strike_prob >= 0.45:
+                _iran_months = 6
+            elif strike_prob >= 0.25:
+                _iran_months = 12
+            else:
+                _iran_months = 24
+            _iran_est = pd.Timestamp.today() + pd.DateOffset(months=_iran_months)
+            _iran_est_str = _iran_est.strftime("%B %Y")
+            _iran_risk = ("HIGH" if strike_prob >= 0.55 else
+                          ("MODERATE" if strike_prob >= 0.30 else "LOW"))
+
+            st.markdown(
+                f"<div style='text-align:center;padding:8px;border:1px solid {C_IRAN};"
+                f"border-radius:8px;margin-bottom:8px'>"
+                f"<span style='font-size:0.8em;color:#aaa'>ESTIMATED WINDOW</span><br>"
+                f"<span style='font-size:1.4em;font-weight:bold;color:{C_IRAN}'>{_iran_est_str}</span><br>"
+                f"<span style='font-size:0.75em;color:#aaa'>Risk: {_iran_risk} | Pressure: {pressure:.0%}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            trend = exit_row.get("base_sentiment_trend", "stable")
+            trend_emoji = {"declining": "📉", "improving": "📈", "stable": "➡️"}.get(trend, "➡️")
+            st.markdown(f"**Base Trend:** {trend_emoji} {trend.title()}")
+            st.markdown(f"**Favor Ratio:** {exit_row.get('favor_ratio', 0.5):.0%}")
+
+            # Intelligence bullets
+            _iran_bullets = []
+            _fav = exit_row.get("favor_ratio", 0.5)
+            _war_s = exit_row.get("war_sentiment_avg", 0.0)
+            _iran_bullets.append(
+                f"Favor ratio **{_fav:.0%}** — "
+                + ("public opinion strongly against continued ops → low strike motivation" if _fav > 0.5
+                   else "negative war stance in base → political cover for escalation")
+            )
+            _iran_bullets.append(
+                f"War sentiment **{_war_s:.3f}** — "
+                + ("hawkish media framing supports military action" if _war_s < -0.1
+                   else "neutral-to-positive framing; less urgency for strikes")
+            )
+            _iran_bullets.append(
+                f"Base trend **{trend}** — "
+                + ("declining support = pressure to act decisively before losing base" if trend == "declining"
+                   else ("improving sentiment = reduced urgency" if trend == "improving"
+                         else "no clear directional pressure"))
+            )
+            st.markdown(
+                f"<div style='background:rgba(255,135,135,0.08);border-left:3px solid {C_IRAN};"
+                f"padding:10px 14px;border-radius:4px;margin-top:6px'>"
+                f"<b style='color:{C_IRAN}'>🔍 Round 3 Assessment</b></div>",
+                unsafe_allow_html=True,
+            )
+            for _b in _iran_bullets:
+                st.markdown(f"- {_b}")
+        else:
+            st.info("Run the war exit model to see Round 3 forecasts.")
+
+    with we2:
+        if not df_filtered.empty and "base_war_sentiment" in df_filtered.columns:
+            fig_base = go.Figure()
+            fig_base.add_trace(go.Scatter(
+                x=df_filtered["date"], y=df_filtered["base_war_sentiment"],
+                mode="lines+markers", name="Base War Sentiment",
+                line=dict(color=C_WAR, width=2), marker=dict(size=3),
+            ))
+            if "base_sentiment_rolling_7d" in df_filtered.columns:
+                fig_base.add_trace(go.Scatter(
+                    x=df_filtered["date"], y=df_filtered["base_sentiment_rolling_7d"],
+                    mode="lines", name="7-Day Rolling Avg",
+                    line=dict(color=C_TRUMP, width=2, dash="dash"),
+                ))
+            fig_base.add_hline(y=0, line_dash="dot", line_color=C_NEUTRAL, opacity=0.5)
+            fig_base.update_layout(
+                height=250, template=PLOTLY_TEMPLATE, margin=dict(t=10, b=30, l=40, r=10),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                xaxis_title="", yaxis_title="Sentiment",
+                title="Base Sentiment — Iran Strike Pressure",
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_base, use_container_width=True, key="base_sent")
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# ROW 7 — Taiwan–China War Probability Scale
+# ROW 7 — Taiwan Invasion Probability
 # ---------------------------------------------------------------------------
 C_TAIWAN = "#e599f7"  # light purple for Taiwan theme
 
-st.markdown("### 🇹🇼 Taiwan–China Conflict Probability Scale")
+st.markdown("### 🇹🇼 Taiwan Invasion Probability")
 st.caption(
-    "Heuristic index based on volume of Taiwan/China military news, sentiment escalation, "
-    "and Iran-tension spillover. Higher = more escalation signals detected. "
-    "This is an analytical tool, not a prediction."
+    "Estimated probability and approximate date of a Chinese invasion of Taiwan. "
+    "Driven by news volume, escalation signals, Iran-spillover correlation, "
+    "and sentiment trajectory from monitored OSINT sources."
 )
 
 if not df_taiwan.empty:
@@ -562,6 +640,76 @@ if not df_taiwan.empty:
 
     latest_prob = tw_daily["war_probability"].iloc[-1] if len(tw_daily) > 0 else 0.5
 
+    # --- Approximate date prediction ---
+    # Heuristic: higher probability → sooner window.
+    # Map probability to months-from-now, then pick a symbolic start-of-quarter date.
+    _today = pd.Timestamp.today()
+    if latest_prob >= 0.75:
+        _months_out = 6
+    elif latest_prob >= 0.55:
+        _months_out = 12
+    elif latest_prob >= 0.35:
+        _months_out = 24
+    else:
+        _months_out = 36
+    _est_date = _today + pd.DateOffset(months=_months_out)
+    # Snap to Q1 start for symbolic weight (new-year / new-cycle)
+    _est_date = pd.Timestamp(year=_est_date.year, month=(((_est_date.month - 1) // 3) * 3 + 1), day=1)
+    est_date_str = _est_date.strftime("%B %Y")
+
+    # --- Build intelligence reasoning bullets ---
+    n_esc = len(df_taiwan[df_taiwan["escalation"] == "escalation"])
+    n_total = len(df_taiwan)
+    esc_ratio = n_esc / n_total if n_total else 0
+    iran_n = int(df_taiwan["iran_spillover"].sum())
+    avg_sent = df_taiwan["sentiment_compound"].mean()
+
+    # Trend direction (last 3 days vs previous 3)
+    if len(tw_daily) >= 6:
+        _recent = tw_daily["war_probability"].iloc[-3:].mean()
+        _prev = tw_daily["war_probability"].iloc[-6:-3].mean()
+        trend_delta = _recent - _prev
+    elif len(tw_daily) >= 2:
+        trend_delta = tw_daily["war_probability"].iloc[-1] - tw_daily["war_probability"].iloc[0]
+    else:
+        trend_delta = 0.0
+
+    trend_word = "rising" if trend_delta > 0.02 else ("falling" if trend_delta < -0.02 else "stable")
+
+    # Latest headlines for context
+    _latest_articles = df_taiwan.sort_values("date", ascending=False).head(5)
+    _headlines = _latest_articles["title"].tolist()
+
+    intel_bullets = []
+    intel_bullets.append(
+        f"Escalation ratio at **{esc_ratio:.0%}** — "
+        + ("majority of coverage frames military posturing or threat" if esc_ratio > 0.5
+           else "balanced coverage; escalation signals below majority threshold")
+    )
+    intel_bullets.append(
+        f"Iran spillover detected in **{iran_n}** articles — "
+        + ("regional multi-front pressure elevates timeline" if iran_n > 5
+           else "limited cross-theater correlation so far")
+    )
+    intel_bullets.append(
+        f"Sentiment trajectory **{trend_word}** (Δ {trend_delta:+.1%}) — "
+        + ("negative momentum suggests growing hawkish rhetoric" if trend_delta > 0.02
+           else ("diplomatic signals may be cooling tensions" if trend_delta < -0.02
+                 else "no clear shift in tone detected"))
+    )
+    intel_bullets.append(
+        f"Average sentiment **{avg_sent:.3f}** — "
+        + ("deeply negative; media framing skews confrontational" if avg_sent < -0.15
+           else ("mildly negative; cautious but not alarmist" if avg_sent < 0
+                 else "neutral-to-positive; low urgency in reporting"))
+    )
+    if latest_prob >= 0.55:
+        intel_bullets.append(
+            f"Volume signal: **{n_total}** articles tracked — high coverage density "
+            "correlates with elevated geopolitical attention"
+        )
+
+    # --- Layout ---
     tw1, tw2 = st.columns([1, 2])
 
     with tw1:
@@ -569,7 +717,7 @@ if not df_taiwan.empty:
             mode="gauge+number",
             value=latest_prob * 100,
             number={"suffix": "%"},
-            title={"text": "Taiwan Conflict Risk"},
+            title={"text": "Taiwan Invasion Risk"},
             gauge={
                 "axis": {"range": [0, 100]},
                 "bar": {"color": C_TAIWAN},
@@ -587,12 +735,21 @@ if not df_taiwan.empty:
         )
         st.plotly_chart(fig_tw_gauge, use_container_width=True, key="taiwan_gauge")
 
-        # Quick stats
-        n_esc = len(df_taiwan[df_taiwan["escalation"] == "escalation"])
-        n_total = len(df_taiwan)
-        st.markdown(f"**Articles:** {n_total} | **Escalation:** {n_esc} ({n_esc/n_total:.0%})")
-        iran_n = int(df_taiwan["iran_spillover"].sum())
-        st.markdown(f"**Iran Spillover Mentions:** {iran_n}")
+        # Estimated date callout
+        _risk_label = ("HIGH" if latest_prob >= 0.6 else
+                       ("MODERATE" if latest_prob >= 0.35 else "LOW"))
+        st.markdown(
+            f"<div style='text-align:center;padding:8px;border:1px solid {C_TAIWAN};"
+            f"border-radius:8px;margin-bottom:8px'>"
+            f"<span style='font-size:0.8em;color:#aaa'>ESTIMATED WINDOW</span><br>"
+            f"<span style='font-size:1.4em;font-weight:bold;color:{C_TAIWAN}'>{est_date_str}</span><br>"
+            f"<span style='font-size:0.75em;color:#aaa'>Risk Level: {_risk_label}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(f"**Articles:** {n_total} | **Escalation:** {n_esc} ({esc_ratio:.0%})")
+        st.markdown(f"**Iran Spillover:** {iran_n} | **Trend:** {trend_word}")
 
     with tw2:
         # Escalation breakdown stacked bar + probability line overlay
@@ -609,7 +766,7 @@ if not df_taiwan.empty:
             ))
             fig_tw.add_trace(go.Scatter(
                 x=tw_daily["date"], y=tw_daily["war_probability"] * 100,
-                mode="lines+markers", name="War Probability %",
+                mode="lines+markers", name="Invasion Probability %",
                 line=dict(color=C_TAIWAN, width=3), marker=dict(size=6),
                 yaxis="y2",
             ))
@@ -623,17 +780,217 @@ if not df_taiwan.empty:
                     title="Probability %", overlaying="y", side="right",
                     range=[0, 100], showgrid=False,
                 ),
-                title="Taiwan–China Escalation Trend & War Probability",
+                title="Taiwan Invasion — Escalation Trend & Probability",
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(fig_tw, use_container_width=True, key="taiwan_trend")
+
+    # --- Intelligence Assessment ---
+    st.markdown(
+        f"<div style='background:rgba(229,153,247,0.08);border-left:3px solid {C_TAIWAN};"
+        f"padding:12px 16px;border-radius:4px;margin-top:4px'>"
+        f"<b style='color:{C_TAIWAN}'>🔍 Intelligence Assessment — Taiwan Invasion</b></div>",
+        unsafe_allow_html=True,
+    )
+    for bullet in intel_bullets:
+        st.markdown(f"- {bullet}")
+
+    # Latest headlines
+    if _headlines:
+        with st.expander("📰 Latest monitored headlines", expanded=False):
+            for h in _headlines:
+                st.markdown(f"- {h}")
 else:
     st.info("No Taiwan tension data yet. Run the ingest pipeline first.")
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# ROW 8 — Prediction History (compact)
+# ROW 8 — Oil Buy/Sell Signal & Accuracy Tracker
+# ---------------------------------------------------------------------------
+C_BUY = "#51cf66"
+C_SELL = "#ff6b6b"
+C_HOLD = "#868e96"
+
+st.markdown("### 📈 Oil Trading Signal — Buy / Sell / Hold")
+st.caption(
+    "Composite model combining price momentum, news sentiment, Reddit sentiment, "
+    "Trump sentiment, war escalation, and war stance signals. Backtested against "
+    "next-day price direction. The model learns from its mistakes via accuracy tracking."
+)
+
+# Load buy signals parquet
+_buy_sig_path = Path(__file__).resolve().parent.parent / "data" / "processed" / "predictions" / "buy_signals.parquet"
+df_signals = pd.DataFrame()
+if _buy_sig_path.exists():
+    df_signals = pd.read_parquet(str(_buy_sig_path))
+    df_signals["date"] = pd.to_datetime(df_signals["date"]).dt.date
+
+if not df_signals.empty:
+    # --- Accuracy metrics ---
+    _traded = df_signals[df_signals["correct"].notna()]
+    _accuracy = _traded["correct"].mean() if len(_traded) > 0 else 0.0
+    _n_trades = len(_traded)
+    _n_correct = int(_traded["correct"].sum()) if len(_traded) > 0 else 0
+    _n_buy = (df_signals["signal"] == "BUY").sum()
+    _n_sell = (df_signals["signal"] == "SELL").sum()
+    _n_hold = (df_signals["signal"] == "HOLD").sum()
+    _latest_sig = df_signals.iloc[-1]
+
+    bs1, bs2 = st.columns([1, 2])
+
+    with bs1:
+        # Latest signal callout
+        _sig_color = {
+            "BUY": C_BUY, "SELL": C_SELL, "HOLD": C_HOLD
+        }.get(_latest_sig["signal"], C_HOLD)
+        _sig_emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⚪"}.get(_latest_sig["signal"], "⚪")
+
+        st.markdown(
+            f"<div style='text-align:center;padding:12px;border:2px solid {_sig_color};"
+            f"border-radius:10px;margin-bottom:10px'>"
+            f"<span style='font-size:0.8em;color:#aaa'>LATEST SIGNAL</span><br>"
+            f"<span style='font-size:2em;font-weight:bold;color:{_sig_color}'>"
+            f"{_sig_emoji} {_latest_sig['signal']}</span><br>"
+            f"<span style='font-size:0.85em;color:#ccc'>Score: {_latest_sig['composite_score']:+.3f}"
+            f" | Strength: {_latest_sig['signal_strength']:.0%}</span><br>"
+            f"<span style='font-size:0.75em;color:#999'>{_latest_sig['reason']}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Accuracy gauge
+        fig_acc = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=_accuracy * 100,
+            number={"suffix": "%"},
+            title={"text": "Backtest Accuracy"},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": C_BUY if _accuracy >= 0.55 else C_SELL},
+                "steps": [
+                    {"range": [0, 40], "color": "#3d1f1f"},
+                    {"range": [40, 55], "color": "#3d3520"},
+                    {"range": [55, 100], "color": "#1f3d25"},
+                ],
+            },
+        ))
+        fig_acc.update_layout(
+            height=200, margin=dict(t=40, b=0, l=30, r=30),
+            paper_bgcolor="rgba(0,0,0,0)", font=dict(color=C_TEXT),
+        )
+        st.plotly_chart(fig_acc, use_container_width=True, key="accuracy_gauge")
+
+        st.markdown(
+            f"**Trades:** {_n_trades} evaluated | **Correct:** {_n_correct} "
+            f"({_accuracy:.0%})<br>"
+            f"**Signals:** {_n_buy} BUY · {_n_sell} SELL · {_n_hold} HOLD",
+            unsafe_allow_html=True,
+        )
+
+    with bs2:
+        # Price chart with buy/sell markers
+        fig_bs = go.Figure()
+
+        # Price line
+        fig_bs.add_trace(go.Scatter(
+            x=df_signals["date"], y=df_signals["avg_price"],
+            mode="lines", name="Oil Price",
+            line=dict(color="#ffd43b", width=2),
+        ))
+
+        # BUY markers
+        _buys = df_signals[df_signals["signal"] == "BUY"]
+        if not _buys.empty:
+            fig_bs.add_trace(go.Scatter(
+                x=_buys["date"], y=_buys["avg_price"],
+                mode="markers", name="BUY",
+                marker=dict(color=C_BUY, size=10, symbol="triangle-up"),
+                text=_buys["reason"], hovertemplate="%{x}<br>$%{y:.2f}<br>%{text}",
+            ))
+
+        # SELL markers
+        _sells = df_signals[df_signals["signal"] == "SELL"]
+        if not _sells.empty:
+            fig_bs.add_trace(go.Scatter(
+                x=_sells["date"], y=_sells["avg_price"],
+                mode="markers", name="SELL",
+                marker=dict(color=C_SELL, size=10, symbol="triangle-down"),
+                text=_sells["reason"], hovertemplate="%{x}<br>$%{y:.2f}<br>%{text}",
+            ))
+
+        # Composite score on secondary axis
+        fig_bs.add_trace(go.Bar(
+            x=df_signals["date"], y=df_signals["composite_score"],
+            name="Composite Score", opacity=0.3,
+            marker_color=df_signals["composite_score"].apply(
+                lambda v: C_BUY if v > 0 else C_SELL
+            ),
+            yaxis="y2",
+        ))
+
+        fig_bs.update_layout(
+            height=350, template=PLOTLY_TEMPLATE,
+            margin=dict(t=30, b=30, l=50, r=60),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            xaxis_title="", yaxis_title="Oil Price ($)",
+            yaxis2=dict(
+                title="Score", overlaying="y", side="right",
+                range=[-1, 1], showgrid=False,
+            ),
+            title="Oil Price with Buy/Sell Signals",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_bs, use_container_width=True, key="buy_signal_chart")
+
+    # --- Backtest detail table ---
+    with st.expander("📊 Signal Backtest Detail", expanded=False):
+        _detail = df_signals[["date", "signal", "avg_price", "composite_score",
+                              "signal_strength", "reason", "next_day_direction", "correct"]].copy()
+        _detail["next_day"] = _detail["next_day_direction"].map({1.0: "Up ↑", 0.0: "Down ↓"})
+        _detail["result"] = _detail["correct"].map({1.0: "✓ Correct", 0.0: "✗ Wrong"})
+        _detail = _detail.drop(columns=["next_day_direction", "correct"])
+        st.dataframe(
+            _detail.sort_values("date", ascending=False),
+            use_container_width=True, hide_index=True, height=250, key="backtest_table",
+        )
+
+    # --- Model self-assessment ---
+    if len(_traded) >= 3:
+        # Check recent accuracy (last 5 trades)
+        _recent_trades = _traded.tail(5)
+        _recent_acc = _recent_trades["correct"].mean()
+        st.markdown(
+            f"<div style='background:rgba(81,207,102,0.08);border-left:3px solid {C_BUY};"
+            f"padding:10px 14px;border-radius:4px;margin-top:6px'>"
+            f"<b style='color:{C_BUY}'>🧠 Model Self-Assessment</b></div>",
+            unsafe_allow_html=True,
+        )
+        if _recent_acc >= 0.7:
+            st.markdown(
+                f"- Recent accuracy **{_recent_acc:.0%}** (last 5 trades) — "
+                "model is performing well, signals are reliable"
+            )
+        elif _recent_acc >= 0.4:
+            st.markdown(
+                f"- Recent accuracy **{_recent_acc:.0%}** (last 5 trades) — "
+                "mixed results, use signals as one input among many"
+            )
+        else:
+            st.markdown(
+                f"- Recent accuracy **{_recent_acc:.0%}** (last 5 trades) — "
+                "⚠️ model is underperforming, signals may be contrarian indicators"
+            )
+        st.markdown(
+            f"- Overall accuracy: **{_accuracy:.0%}** across {_n_trades} trades"
+        )
+else:
+    st.info("No buy signals yet. Run: `python scripts/ml/buy_signal_model.py`")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# ROW 9 — Prediction History (compact)
 # ---------------------------------------------------------------------------
 st.markdown("#### 📋 Prediction History")
 
